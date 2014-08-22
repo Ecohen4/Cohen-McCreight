@@ -1,3 +1,5 @@
+# Re-visiting on August 22 2014
+
 # options(warn=1)
 # if (!require(rgdal)) install.packages('rgdal')
 # if (!require(spdep)) install.packages('spdep')
@@ -5,11 +7,11 @@
 # if (!require(MBA)) install.packages('MBA')
 # if (!require(fields)) install.packages('fields')
 # options(warn=2)
-# 
+#
 # ##DOWNLOAD STATION LIST----
 # ##SET THIS TO WHERE YOU WANT TO DOWNLOAD YOUR FILES##
 # setwd("~/Desktop/Dropbox/Cohen-McCreight")
-# 
+#
 # file <- "ftp://ftp.ncdc.noaa.gov/pub/data/noaa/ish-history.csv"
 # repeat {
 #   try(download.file(file, "data/ish-history.csv", quiet=TRUE))
@@ -32,7 +34,7 @@
 # dat.start <- 20110401
 # dat.end <- 20130401
 # st <- subset(st,LON > lon.min & LON < lon.max & LAT > lat.min & LAT < lat.max & BEGIN <= dat.start & END >= dat.end) #230 stations in lat-long region. 136 of which in India
-# 
+#
 # #FILTER BY COUNTRY----
 # ##ENTER COUNTRY A2 CODES IN QUOTES("") BELOW##
 # ##A2 CODES CAN BE FOUND HERE http://www.worldatlas.com/aatlas/ctycodes.htm ##
@@ -48,12 +50,12 @@
 # st.set$ELEV <- st.set$ELEV/10
 # st.set$BEGIN <- as.numeric(substr(st.set$BEGIN, 1, 4))
 # st.set$END <- as.numeric(substr(st.set$END, 1, 4))
-# 
+#
 # #outputs <- as.data.frame(matrix(NA, dim(st.set)[1], 2))
 # #names(outputs) <- c("FILE", "STATUS")
-# ## STATUS equal to 0 equals downloaded, 256 equals not downloaded    
+# ## STATUS equal to 0 equals downloaded, 256 equals not downloaded
 # ## what does 127 mean??? EC 10-24-2012
-# 
+#
 # outputs2 <- data.frame(FILE=NA, STATUS=NA)
 # for (y in as.numeric(substr(dat.start,1,4)):as.numeric(substr(dat.end,1,4))) {
 #   for (s in 1:dim(st.set)[1]) {
@@ -68,13 +70,13 @@
 #     outputs2 <- rbind(outputs2, data.frame(FILE=theFile, STATUS=theTry))
 #   }
 # }
-# 
+#
 # head(outputs)
 # sum(outputs2$STATUS == 1)
 # sum(outputs2$STATUS == 0)
-# 
+#
 # save(outputs2, file='outputs2.rsav')
-# 
+#
 # system("gunzip -r data/raw", intern = FALSE, ignore.stderr = TRUE)
 
 ##'#####################################################################
@@ -193,7 +195,7 @@ for (i in 1:length(files)) {
     st$YR <- as.numeric(format(st$DATE, "%Y"))
     st$M <- as.numeric(format(st$DATE, "%m"))
     st$D <- as.numeric(format(st$DATE, "%d"))
-  }  
+  }
   st <- st[st$MIN == 0,]
   daily.data[[i]]$USAFID <- rep(st$USAFID[1], length(dates))
   daily.data[[i]]$WBAN <- rep(st$WBAN[1], length(dates))
