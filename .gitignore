@@ -1,0 +1,15 @@
+
+*.rsav
+*.nc
+*.pdf
+*.png
+*.tex
+*.inv
+*.dat
+*.csv
+*.xlsx
+*.tar.gz
+*.xls
+*.gz
+*.gz.1
+.Rproj.user
