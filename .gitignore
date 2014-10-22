@@ -3,10 +3,9 @@
 *.png
 *.tex
 *.inv
-*.dat
 *.xlsx
 *.tar.gz
 *.xls
 *.gz
 *.gz.1
-.Rproj.user
+*.Rproj.user
