@@ -1,0 +1,3 @@
+This repository contains R scripts for accessing, downloading, subsetting and cleaning climate data from various international climate databases.  The data come in all shapes and sizes (e.g. flat files, netCDF, tar.zip, etc…) and our goal here is to extract various data from the various sources and put them into easy-to-use data.frames in R.  Once we have the requisite data in data.frames, we can proceed with analysis.
+
+Note: To save space, this github repository contains only R scripts and a few training data sets.  The large data files are kept elsewhere (dropbox) or, better yet, accessed as needed directly from the source.
