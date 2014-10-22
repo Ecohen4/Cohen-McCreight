@@ -1,11 +1,9 @@
 *.rsav
 *.nc
-# *.pdf
 *.png
 *.tex
 *.inv
 *.dat
-# *.csv
 *.xlsx
 *.tar.gz
 *.xls
