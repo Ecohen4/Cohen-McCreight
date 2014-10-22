@@ -1,9 +1,9 @@
 # The following libraries will be required for this script
 
-require(ggmap)  
-require(FNN) 
-require(reshape) 
-require(gridExtra) 
+require(ggmap)
+require(FNN)
+require(reshape)
+require(gridExtra)
 require(plyr)
 
 
@@ -65,7 +65,6 @@ k.nearest.stations <- function(city, k)
 } # End function
 k.nearest.stations(cities.of.interest, 5)
 
-
 # Function to download data for cities of interest between given date ranges (in years)
 weather.data <- function(city, beg.date, end.date)
 {
@@ -100,6 +99,8 @@ weather.data <- function(city, beg.date, end.date)
     } # end i
 
       output.log <- rbind(output.log, temp.log) # Combine each year's log
+      output.log <- output.log[order(output.log$File),]
+    
       assign("output.log", output.log, envir = .GlobalEnv) 
 
   } # end year 
@@ -108,7 +109,8 @@ write.csv(output.log, paste("output_log", beg.date, end.date,
                             paste("(cities:",length(city),")",sep=""),
                             format(Sys.time(), "%s"), sep="_"), row.names=F)
 } # End function
-weather.data(cities.of.interest,2012, 2013)
+weather.data(cities.of.interest,2011, 2013)
+
 
 
 # Function to convert the .gz files into csv,
@@ -165,17 +167,16 @@ file.conversions()
 
 # Combine the csv files from the same weather stations
 # Save the combined file, and delete the individual .csvs
-files <- list.files(getwd(),pattern="*[0-9].csv")
+files <- list.files(getwd(),pattern="[0-9].csv$")
+files  # Check to make sure you're only going to be looking at relevant csv files
+
 for (i in 1:nrow(count(substr(files, 1, nchar(files)-9))))
 {
-  station.list <- as.vector(count(substr(files, 1, nchar(files)-9))[,1])
   counts <- as.vector(count(substr(files, 1, nchar(files)-9))[,2])
-  
-  beg.count <- sum(counts[1:i])-1
+  beg.count <- sum(counts[1:(i-1)])+1
   end.count <- sum(counts[1:i])
   
-  if(i == 1) {start <- 1}
-  else {start <- beg.count}
+  if(i == 1) {start <- 1} else {start <- beg.count}
   
   station.data <- lapply(files[start:end.count],
                          read.csv, header = TRUE)
@@ -190,3 +191,8 @@ for (i in 1:nrow(count(substr(files, 1, nchar(files)-9))))
   file.remove(files[start:end.count])
 }
 
+
+# Can check closeness of weather stations to geocode of cities:
+map <- get_map(location = cities.of.interest[1], zoom = 11)
+ggmap(map) + geom_point(aes(x = LON, y = LAT), data = stations.of.interest[1:5,], colour="red", size=7, alpha=.5) +
+  geom_point(aes(x = lon, y = lat), data = geocode(cities.of.interest[1]), colour="black", size=7, alpha=.5)
