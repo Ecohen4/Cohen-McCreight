@@ -24,7 +24,7 @@ files
 combined.df <- demand.data <- data.frame()
 for (i in 1:length(files))
 {
-  demand.data <- readWorksheet(loadWorkbook(files[1]), 
+  demand.data <- readWorksheet(loadWorkbook(files[i]), 
                              sheet=1, startCol=1, endCol=8, startRow=2, endRow=51, header=TRUE)
   demand.data <- demand.data[-1,]
   colnames(demand.data)[1] <- "Time"
