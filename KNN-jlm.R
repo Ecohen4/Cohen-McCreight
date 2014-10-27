@@ -4,9 +4,9 @@
 require(plyr)
 require(reshape2)
 # setwd("/Users/elliotcohen/Dropbox/Data/Cohen-McCreight/")
-setwd("/Users/elliotcohen/Dropbox/data/Electricity/CEA/Rcommands")
+# setwd("/Users/elliotcohen/Dropbox/data/Electricity/CEA/Rcommands")
 
-metdata<-read.fwf(file="http://www.metoffice.gov.uk/hadobs/hadisd/hadisd_station_info.txt",  header=FALSE, widths=c(6,6,31,3,8,9,8), strip.white=TRUE)
+metdata<-read.fwf(file="http://www.metoffice.gov.uk/hadobs/hadisd/v102_2013f/files/hadisd_station_info_v102.txt",  header=FALSE, widths=c(6,6,31,3,8,9,8), strip.white=TRUE)
 
 names(metdata)<-c("USAFID","WBAN","City","Country","Lat","Long","Elev")
 head(metdata)
@@ -25,13 +25,13 @@ require(ncdf)
 
 filepath<-"/Users/elliotcohen/Dropbox/Data/Climate/Hadley/"#WMO_400000-499999"
 #filepath<-"~/Desktop/Dropbox/Cohen-McCreight/Hadley/"#WMO_400000-499999"
-##jlm: i specified pattern b/c there was a non-.nc file in the directory i'm using. 
+##jlm: i specified pattern b/c there was a non-.nc file in the directory i'm using.
 ##jlm: i also returned the full path, as it saves work below.
 files <- list.files(filepath, pattern=glob2rx('*nc'), full.names=TRUE)
 
 # use "getData" function..
 ##jlm: it's somewhat better to "loop" on the set files than than over an index.
-getData<-function(fileName){  ## it's somewhat better to 
+getData<-function(fileName){  ## it's somewhat better to
   #print(fileName)
   if (!file.exists(theFile)) next
     nc<-open.ncdf(theFile)
@@ -77,17 +77,17 @@ colClasses=c("character","integer", rep("numeric",96))
         data$V2<-try(as.Date(data$V2-25569, origin="1970-01-01"), silent=TRUE)
       }
     if(.ext==".csv"){
-        data<-read.table(file=theFile, sep=",", strip.white=TRUE, blank.lines.skip=TRUE, fill=TRUE, skip=rowIndex[1], header=FALSE, check.names=TRUE, comment="#") 
-        data$V1<-as.Date(data$V2, format="%Y-%m-%d")  
+        data<-read.table(file=theFile, sep=",", strip.white=TRUE, blank.lines.skip=TRUE, fill=TRUE, skip=rowIndex[1], header=FALSE, check.names=TRUE, comment="#")
+        data$V1<-as.Date(data$V2, format="%Y-%m-%d")
       }
       if(i==1) {DF <<- data} else {DF <<- rbind(DF,data)}
       DF
-    }  
-  
-  
+    }
+
+
 ## beware of global assignment for DF.... ask James about this...
 for(i in 1:length(files)){
-  getData(i)  
+  getData(i)
 }
 
 ### for the tricky data...
@@ -102,8 +102,7 @@ for(i in 1:length(files)){
 
 
 # repeat for Stn ISHClosest
-# find closest weather station to power station....
-
+# find closest weather station to power station...
 load("Stationwise.rsav")
 load("CGSmeta.rsav")
 load("CGSmeta2.rsav")
@@ -152,7 +151,7 @@ names(outList) <- paste0(variable,c("Closest",'Data'))
 outList
 }
 
-## these could all be rolled in to one 
+## these could all be rolled in to one
 tavg <- llply( as.list("tavg"), ingestGhcnVariable, download=FALSE)
 tmin <- llply( as.list("tmin"), ingestGhcnVariable, download=FALSE)
 tmax <- llply( as.list("tmax"), ingestGhcnVariable, download=FALSE)
@@ -163,7 +162,7 @@ tmax[[1]][[1]]$id==tavg[[1]][[1]]$id  ##FALSE!
 tmax[[1]][[1]]$distance.km>=tavg[[1]][[1]]$distance.km  ##TRUE
 
 ## so it looks like we'll only use tavg?
-# April 1, 2011 - March 31, 2013.  
+# April 1, 2011 - March 31, 2013.
 tavgData <- tavg[[1]][[2]][,c(1:2, 4*(1:12))]
 names(tavgData) <- c('stnId', 'year', 1:12) #month.abb)
 tavgMelt <- melt(tavgData, id=c('stnId','year'),
