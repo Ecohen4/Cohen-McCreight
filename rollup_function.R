@@ -198,7 +198,7 @@ kn_stations <- function(city.list, station.list, k, beg, end, int, tol, dist)
   #rm.tmp <- unique(c(rm.dist, rm.dist))
   #if(length(rm.ms)==0) comb.list <- comb.list else comb.list <- comb.list[-ms.ix]
   
-  # 3.b) set a minimum number of observationsand subtract 999s
+  # 3.b) set a minimum number of observations and subtract 999s
   min.obs <- (24/int)*365*nyrs*(1-tol)
   obs.ix <- which(sapply(comb.list, nrow) < (min.obs-ms.obs))
   rm.obs <- names(comb.list[which(sapply(comb.list, nrow) < (min.obs-ms.obs))])
@@ -229,6 +229,7 @@ kn_stations <- function(city.list, station.list, k, beg, end, int, tol, dist)
   # Show the stations that will be in the final output:
   print(names(final.list))
   
+  # Return list of closest stations closest to each reference point
   return(final.list) 
 }
 st.interest <- kn_stations(cities, stations, 5, 2011, 2013, 3, .05, 100)
@@ -249,4 +250,4 @@ st.interest <- kn_stations(cities, stations, 5, 2011, 2013, 3, .05, 100)
 
 setwd("~/Desktop/Temp_Data/")
 
-write.csv("Nairobi_Hourly")
+#write.csv("Nairobi_Hourly")
