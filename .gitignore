@@ -12,3 +12,4 @@
 *.prcp
 *.Rproj
 *.Rhistory
+*cache*
