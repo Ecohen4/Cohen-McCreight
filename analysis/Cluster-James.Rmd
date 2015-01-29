@@ -1,0 +1,113 @@
+Clustering
+========================================================
+### Cluster Western U.S. climate divisions by average winter precipitation.
+Compute the average winter precipitation for each climate division in the Western U.S.
+* The data will be a single column of one average precipitation value per division
+```{r libs, results='hide', message=FALSE}
+library(maps)
+library(mapdata)
+library(mclust)
+library(ggplot2)
+library(ncdf)
+library(cluster)
+```
+
+```{r load-Precip}
+## Load Climate Division Precipitation data (Western US)
+px = scan("http://iridl.ldeo.columbia.edu/SOURCES/.NOAA/.NCDC/.CIRS/.ClimateDivision/lon/data.ch")
+wi = px < -104
+px = px[wi]
+py = scan("http://iridl.ldeo.columbia.edu/SOURCES/.NOAA/.NCDC/.CIRS/.ClimateDivision/lat/data.ch")[wi]
+cd.pcp = open.ncdf('pcp.cdf')
+pi = get.var.ncdf(cd.pcp, 'IDIV')[wi]
+ptm = get.var.ncdf(cd.pcp, 'T') / 12 + 1960
+pcpm = get.var.ncdf(cd.pcp, 'pcp')[,wi]
+
+## Compute winter average
+yr<-trunc(ptm+1/24) # shift date up by two weeks so that Dec becomes part of next year; (e.g. yr runs Dec-Nov)
+yr.list<-split(1:length(ptm), yr, drop=TRUE) # a list of which months go with which year.
+djfm<-lapply(yr.list, '[', 1:4) # grab the first 4 months of the modified year 
+wintavg<-sapply(djfm, function(i) colMeans(pcpm[i, ]))  #compute winter average (Dec-Mar)
+rainw<-t(wintavg)
+rainw<-rainw[-1,] # drop the first year
+rainw<-rainw[-dim(rainw)[1],]
+time<-as.numeric(row.names(rainw))
+```
+
+x is the data matrix to cluster
+* columns are the attributes to cluster on (lat-long-precip)
+* rows are records/observations to cluster (years)
+```{r cluster-data}
+## "rainw" contains winter precip for 81 climdivs in western U.S. for 1986-2013
+x<-apply(X=rainw, MARGIN=2, FUN=mean) # 'climatology' for each climdiv
+```
+### Part (i) identify the number of clusters, K
+* Select a desired number of clusters, say, j; 
+* cluster the data and compute the WSS:
+* repeat for j=1:10; 
+* plot j versus WSS:
+* select number of clusters K, where the WSS starts to saturate.
+
+```{r wss-k-clusters, fig.align='left', fig.width=7, fig.height=4}
+## K-means cluster
+nk = 7  # number of clusters to consider
+wss=1:nk
+x<-as.data.frame(x)
+wss <- (nrow(x)-1)*sum(apply(x,2,var))
+for (i in 2:nk) wss[i] <- sum(kmeans(x,centers=i)$withinss)
+plot(wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares") 
+## --> select K corresponding to the WSS beyond which the reduction in variance is small. Similar to the Eigen spectrum (variogram).
+```
+
+```{r BIC-k-clusters, fig.height=9, fig.width=12}
+## Alternatively, use BIC to find the best number of clusters.
+d_clust <- Mclust(x, G=1:10)
+m.best <- dim(d_clust$z)[2]
+cat("model-based optimal number of clusters:", m.best, "\n")
+par(mfrow=c(2,2), mar=c(5,4,2,2)+0.1)
+plot(d_clust)
+```
+Methods above indicate that 3 groups is optimal.
+* WSS levels off after 3 groups
+* BIC plateaus after 3 groups
+* Uncertainty is miniminzed at 3 groups
+* Density is minimized at 3 groups
+
+### Part (ii) cluster the data into K clusters and display them.
+```{r cluster1-plot}
+## Ward Hierarchical Clustering
+d <- dist(x, method = "euclidean") # distance matrix
+fit <- hclust(d, method="ward")
+par(mfrow=c(1,1), mar=c(5,4,4,2)+0.1)
+plot(fit) # display dendogram
+groups <- cutree(fit, k=3) # cut tree into clusters
+rect.hclust(fit, k=3, border="red") # draw dendogram with red borders around the clusters
+```
+
+### Part (iii) Repeat (i)-(ii) by including latitude and longitude – the data set will now be a matrix of 3 columns – precipitation, latitude and longitude.
+```{r cluster2}
+x<-data.frame(long=px, lat=py, rain=x)
+```
+
+```{r ref.label="wss-k-clusters", fig.width=7, fig.height=4, fig.align='left'}
+```
+Again, 3 groups is optimal.
+
+Finally, we cluster the lat-long-precip data into K clusters and try a few visualizations
+```{r cluster2-plots, message=FALSE}
+## First, a generic spatial plot with respect to lat-long.
+k <- 3
+library(ggplot2)
+clusters <- pam(x, k, stand=TRUE, cluster.only=T)
+qplot(x=x$long, y=x$lat, color=factor(clusters)) + theme_bw() + scale_y_continuous(name="Latitude") + scale_x_continuous(name="Longitude")
+
+## Next, try cluster plot against first 2 principal components
+fit <- kmeans(x, 3)
+library(cluster) 
+clusplot(x, fit$cluster, color=TRUE, shade=TRUE, 
+     labels=2, lines=0)
+
+## Finally, try a centroid Plot against first 2 discriminant functions
+library(fpc)
+plotcluster(x, fit$cluster)
+```
