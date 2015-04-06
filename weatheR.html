@@ -116,7 +116,7 @@ require(weatheR)</code></pre>
 <div id="utility-functions" class="section level4">
 <h4>Utility Functions:</h4>
 <ul>
-<li><p><code>allStations</code>: allows the user to download the full list of Integrated Surface Database (ISD) weather stations. The list of stations, as of &lt;<insert date>&gt;, is actually included in the package and can be loaded into the session by calling: <code>data(stations)</code>. The purpose for this function however is so that in the event this list is updated, the user does not have to rely solely on the list included in the package.</p></li>
+<li><p><code>allStations</code>: allows the user to download the full list of Integrated Surface Database (ISD) weather stations. The list of stations, as of (insert date), is actually included in the package and can be loaded into the session by calling: <code>data(stations)</code>. The purpose for this function however is so that in the event this list is updated, the user does not have to rely solely on the list included in the package.</p></li>
 <li><p><code>kNStations</code>: this function is the heart of the package and is used in every data downloading function. Using The Great Circle distance calculation, this funciton finds the k-nearest weather stations to a given input location. The distance from a refernce point and each station is quoted in kilometers.</p></li>
 <li><p><code>plotStations</code>: plots each reference point and its respective k-nearest stations. This function was included as to provide a quick visual inspection to make sure you’re getting the right data.</p></li>
 <li><p><code>interpolateData</code>: this is a funciton with limited use and sole purpose is to interpolate missing data from the weather stations so that we can run future analysis. It takes in a list of dataframes which is the output from all of the downloading data functions.</p></li>
@@ -235,7 +235,7 @@ gcd.slc &lt;- function(long1, lat1, long2, lat2) {
 </div>
 <div id="visual-inspection-of-nearest-neighbors" class="section level3">
 <h3>Visual Inspection of Nearest Neighbors</h3>
-<p>We now have all that is needed to begin downloading data, but before we do so we can do a quick visual inspection to see how far away the selected weather stations are from the location of interest. The code below for the <code>multiplot</code> function was developed by &lt;&lt; insert refernce &gt;&gt; and is used in the &lt;&lt; &gt;&gt; package. However, instead of increasing the number of dependencies of this package, we decided to copy the code for internal use.</p>
+<p>We now have all that is needed to begin downloading data, but before we do so we can visualize the stations of each city to understand how far away each one is from the given location. The code below for the <code>multiplot</code> function was developed by – insert refernce – and is used in the _____ package. However, instead of increasing the number of dependencies of this package, we decided to copy the code for internal use.</p>
 <pre class="r"><code>multiplot &lt;- function(..., plotlist=NULL, file, cols=1, layout=NULL)
 {
   # Make a list from the ... arguments and plotlist

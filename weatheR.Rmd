@@ -42,7 +42,7 @@ This package has **utility** functions and **data** funcitons. The **data** func
 
 #### Utility Functions:
 
-- `allStations`: allows the user to download the full list of Integrated Surface Database (ISD) weather stations.  The list of stations, as of <<insert date>>, is actually included in the package and can be loaded into the session by calling: `data(stations)`. The purpose for this function however is so that in the event this list is updated, the user does not have to rely solely on the list included in the package.
+- `allStations`: allows the user to download the full list of Integrated Surface Database (ISD) weather stations.  The list of stations, as of (insert date), is actually included in the package and can be loaded into the session by calling: `data(stations)`. The purpose for this function however is so that in the event this list is updated, the user does not have to rely solely on the list included in the package.
 
 - `kNStations`:  this function is the heart of the package and is used in every data downloading function.  Using The Great Circle distance calculation, this funciton finds the k-nearest weather stations to a given input location.  The distance from a refernce point and each station is quoted in kilometers. 
 
@@ -210,7 +210,7 @@ kNStations <- function(city.list, station.list, k = 5)
 
 ### Visual Inspection of Nearest Neighbors
 
-We now have all that is needed to begin downloading data, but before we do so we can do a quick visual inspection to see how far away the selected weather stations are from the location of interest. The code below for the `multiplot` function was developed by << insert refernce >> and is used in the <<  >> package.  However, instead of increasing the number of dependencies of this package, we decided to copy the code for internal use.
+We now have all that is needed to begin downloading data, but before we do so we can visualize the stations of each city to understand how far away each one is from the given location. The code below for the `multiplot` function was developed by -- insert refernce -- and is used in the _____ package.  However, instead of increasing the number of dependencies of this package, we decided to copy the code for internal use.
 
 ```{r NOAA: multiplot, echo=TRUE, eval=FALSE}
 multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL)

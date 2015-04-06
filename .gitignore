@@ -12,9 +12,5 @@
 *.prcp
 *.Rproj
 *.Rhistory
-<<<<<<< HEAD
-*cache*
-=======
 *cache*
 .DS_Store
->>>>>>> master
