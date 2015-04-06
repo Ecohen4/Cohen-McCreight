@@ -1,0 +1,601 @@
+---
+title: "Weather data pipeline for R"
+author: "By Elliot Cohen, Michael Piccirelli and James McCreight "
+date: "January 8, 2015"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+theme: spacelab
+---
+
+## Motivation
+Long observational records of high-resolution weather data are instrumental to a wide range of research and development applications. Such data are essential to energy demand forecasts (Segal et al. 1992; Sailor 2001; Crowley et al. 2003; Thatcher 2007, Cohen et al. 2014), building energy models (Deru et al. 2011), renewable energy feasibility and siting assessments (Lambert et al. 2005), crop insurance programs (Helmath et al. 2009), emergency preparedness and early warning systems (Rogers and Tsirkunov 2011), and much more.
+
+Globally, national weather services and climate information centers such as the U.S. National Oceanic and Atmospheric Administration (NOAA), Britain's Met Office, and India's Institute for Tropical Meteorology (IITM), collect, curate, analyze and publish meteorological data from thousands of weather stations. NOAA's National Climatic Data Center (NCDC) is the world's largest archive of weather data. 
+
+NOAA scientists offer a wealth of meteorological/climatological information through the NCDC data portal. The data is available on the [Online Climate Data Directory](http://www.ncdc.noaa.gov/cdo-web/) website. It is also available via FTP, which is more effecient for batch queries, and is the method we will use here.
+
+The following article, and the accompanying `weatheR` library built for the statistical computing language R, is intended to facilitate geo-referenced and quality-control batch query of NOAA's National Climatic Data Center (NCDC)--the world's largest active archive of weather data. Our work builds on "Downloading and processing NOAA hourly weather station data" by Delameter et al. (YEAR). Our goal is to make meteorological data more accessible for a wide range of scientists, engineers and practicioners familiar with data analysis in R, but less familiar with the handling large meteorological datasets in particular. The weatheR libary introduces new functionality and automation previously unavailable:
+
+* Identification and selection of nearest-neighbor weather stations for virtually any place on Earth. Locations of interest are geo-referenced via the Google Maps API.
+* Batch query with a simple charachter string of location names (e.g. "New York City", "Tiennamen Square", "Abuja, Nigeria")
+* Built-in quality controls for "best" data selection based on the geographic proximity and completeness of the data record.
+* Quick visual inspection to make sure you're getting the right data.
+
+## The weatheR library
+### Open-Source and Available to All!
+We created the `weatheR` package with all the necessary functions to download, transform, and plot NOAA weather station data. This package has 4 R package dependencies: `httr`, `ggmap`, `ggplot2`, and `grid`.  The package is available on GitHub at [https://github.com/mpiccirilli/weatheR](https://github.com/mpiccirilli/weatheR). To start using the `weatheR` package immediately, all you need are the following three lines of code:
+```{r weatheR, eval=FALSE, echo=TRUE}
+## install weatheR library (beta version from github)
+require(devtools)
+install_github("mpiccirilli/weatheR")
+require(weatheR)
+```
+
+### Functions
+
+This package has **utility** functions and **data** funcitons. The **data** functions allow users to download data from the NOAA database, whereas the **utility** functions are used primarily in facilitating the data download process.  We'll first define each function then go through an example of downloading data with several of the **data** functions, explaining the mechanics of each utility function along the way.
+
+#### Utility Functions:
+
+- `allStations`: allows the user to download the full list of Integrated Surface Database (ISD) weather stations.  The list of stations, as of (insert date), is actually included in the package and can be loaded into the session by calling: `data(stations)`. The purpose for this function however is so that in the event this list is updated, the user does not have to rely solely on the list included in the package.
+
+- `kNStations`:  this function is the heart of the package and is used in every data downloading function.  Using The Great Circle distance calculation, this funciton finds the k-nearest weather stations to a given input location.  The distance from a refernce point and each station is quoted in kilometers. 
+
+- `plotStations`: plots each reference point and its respective k-nearest stations.  This function was included as to provide a quick visual inspection to make sure you're getting the right data.
+
+- `interpolateData`: this is a funciton with limited use and sole purpose is to interpolate missing data from the weather stations so that we can run future analysis. It takes in a list of dataframes which is the output from all of the downloading data functions. 
+
+- `plotDailyMax`:  We might want to take this function out for now?
+
+#### Data Functions:  
+
+There are four data functions, each of which has a unique level of 'functional autonomy' (does this sound like crazy talk?).  At the lowest level you can specify the exact weather station of interest by it's NOAA identifier. The highest level will return the single 'best' station based on completeness of data and proximity to a given location, as well as linearly interpolate missing temperature values. From the lowest level of autonomy to the highest:
+
+1. Return a specific station, found by it's WBAN ID
+    - `getStationsByID`: This allows users to specify a weather station of choice. The user can either look up the stations prior to using the package, or use the `kNstations` function to pre-select a station of interest.
+
+1. Return k-nearest stations to a location
+    - `getStationsByLocation`:  This is the primary driver of this package.  This funciton allows the user to specify any particular location, whether it be a city or any landmark that can be identified via the Google Maps API. Locations are first geo-referenced via the Google Maps API, then subsequently uses the `kNStations` function to find the k-nearest stations to each respective location.
+
+1. Return the "best" station to a given location
+    - `getFilteredStations`:  This builds on the prior function by applying customizable quality controls, based on geographic proximity to geo-referenced location the and completeness of weather station data, to return the "best" weather station for each location.  The filtering options will be discussed more thoroughly later. 
+
+1. Return the "best" station to a given location and interpolate missing data
+    - `getInterpolatedData`:  This function goes one step beyond the previous.  It makes the same station selection based on proximity and completeness of data, but it then interpolates all the missing temperature values. 
+
+Below is a table of all the functions mentioned above:
+
+```{r package dependencies, message=FALSE, eval=FALSE, echo=FALSE}
+require(knitr)
+pkgFunctions <- data.frame(Utilities=c("allStations", "knStations",
+                                       "plotStations", "interpolateData"),
+                           Data=c("getStationsByID", "getStationsByLocation",
+                           "getFilteredStations", "getInterpolatedData") )
+
+kable(pkgFunctions, format = "markdown")
+```
+
+
+### Dependencies
+
+Before we can go through the mechanics of each function, we need to load in the package dependencies mentioned above. 
+
+```{r loadLibraries, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE}
+# require(weatheR)
+packages <- c('httr', "ggmap", "ggplot2", "grid")
+
+pkgCheck <- function(packages)
+{
+  test <- sapply(packages, function(x){
+    pkg <- suppressWarnings( library(x, logical.return = TRUE, character.only = TRUE) )
+    sapply(names(pkg[pkg==1]), function(x) require(x, character.only = TRUE) )
+    sapply(names(pkg[pkg==0]), function(x) print(x) )
+    return(pkg)
+    })
+}
+
+```
+
+### Station List
+
+Once we load the package into memory, our first step will be to download the full list of ISD weather stations from the NOAA database which can be found here: [ftp://ftp.ncdc.noaa.gov/pub/data/noaa/](ftp://ftp.ncdc.noaa.gov/pub/data/noaa/). The name of the file in that directory is called **`isd-history.txt`** or **`isd-history.csv`**.
+
+As mentioned above, we have included the dataset in the package (subsetted to exclude stations without LAT/LON coordinates), and can be loaded into memory by calling `data(stations)`. However we built this function to download the list from the database incase it is updated in the future.
+
+```{r NOAA: allStations, echo=TRUE, eval=FALSE}
+allStations <- function()
+{
+  # Full list of ISD weather stations:
+  isd <- "ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv" 
+  # 
+  response <- suppressWarnings(GET(isd))
+  all <- read.csv(text=content(response, "text"), header = TRUE)
+  colnames(all)[c(3, 9)] <- c("NAME", "ELEV") # Renaming for ease and consistency
+  all <- all[!is.na(all$LAT) & !is.na(all$LON),] # Removing stations without LAT/LON data
+  return(all)
+}
+stations <- allStations() # Assigns our subsetted list of ISD stations to variable 'stations'
+head(stations)
+```
+
+```{r noaa: allstations noeval, echo=FALSE, eval=FALSE}
+data(stations)
+kable(head(station.list), format = "markdown")
+```
+
+It should be noted that the amount of data lost from the removal stations without LAT/LON data is minimal, approximately 1,300 out of 29,000 weather stations.
+
+
+### Places of Interest
+
+Now that we have the full list of weather stations, let's focus on what stations we want to hone in on.  As mentioned above, the k-nearest stations are based on geo-referenced locations attained via the Google Maps API.  For a location such as a state or country, Google Maps will return the centroid.  However if you use a specific location such as a city or landmark, the geocode will be more precise.
+
+If you would like to return the geocode of a city, it is advisable to specify the state or country in which it is located so as to eliminate the possibility of a mis-matched result. Similarly, if you have multiple cities of the same name you will need to specify the state or country as well, otherwise the Google Maps API will only return one location for all the repeated cities. 
+
+For demonstration, we'll use a few cities in the table of the World's Fastest Growing Cities mentioned in [cite other paper].
+
+```{r NOAA: cities, echo=TRUE, eval=FALSE}
+cities.of.interest <- c("Nairobi, Kenya", "Tema, Ghana", "Accra, Ghana", "Abidjan, Ivory Coast")
+```
+
+
+### Nearest Neighbor Search
+
+Before we can find the k-nearest stations we need an accurate metric to measure distance between a location's reference point and each station. The commonly accepted calculation of distance between two points on the earth's surface is based the great circle.
+
+#### The Great Circle
+
+Distance calculated based on a great circle is the distance between two points on the surface of a sphere. This is different from the Euclidean distance, which would measure a straight line through the sphere's interior. Below are the functions used to calculate the great cirle.
+
+```{r great circle, echo=TRUE, eval=TRUE}
+deg2rad <- function(deg) return(deg*pi/180)
+
+gcd.slc <- function(long1, lat1, long2, lat2) {
+  long1 <- deg2rad(long1)
+  lat1 <- deg2rad(lat1)
+  long2 <- deg2rad(long2)
+  lat2 <- deg2rad(lat2)
+  R <- 6371 # Earth mean radius in km
+  d <- acos(sin(lat1)*sin(lat2) + cos(lat1)*cos(lat2) * cos(long2-long1)) * R
+  return(d) # Distance in km
+}
+```
+
+Note: This does not take elevation into account, however we will look into adding this feature into future versions of the package.
+
+
+#### k-Nearest Stations
+
+We can now use the distance metric calculated in the above functions to find the k-nearest stations to a given location.  Each input location into the function is passed into the `geocode` function in the `ggmap` package, which sends a query to the Google Maps API and returns a pair of Latitude and Longitude coordinates. Once we have a set of LAT/LON coordiates for each location, we then calculate the distance of every station for each location, sort for the shortest distances, and return only the *k* stations desired.
+
+```{r NOAA: kNStations, echo=TRUE, eval=FALSE}
+kNStations <- function(city.list, station.list, k = 5)
+{
+  # Find geocodes of each city
+  coords <- suppressMessages(geocode(city.list))
+  
+  # Loop through each location, finding the k-nearest stations from the main list:
+  kns.ix <- NULL # create a variable to track row index the stations
+  kns.dist <- NULL # create a distance variable
+  for(i in 1:length(city.list))
+  {
+    # Great cirle distance calculator:
+    dist <- gcd.slc(coords$lon[i], coords$lat[i], station.list$LON, station.list$LAT)
+    distSort <- sort(dist, ind=TRUE) 
+    tmp.ix <- distSort$ix[1:k] # temporary index variable for the loop
+    tmp.dist <- distSort$x[1:k] # temporary distance variable for the loop
+    kns.ix <- c(kns.ix, tmp.ix) # append row index of stations for each location
+    kns.dist <- c(kns.dist, tmp.dist) # append distances of stations for each location
+  }
+  st <- station.list[kns.ix,] # Subset the full list with k-nearest stations
+  st$city <- rep(city.list, each=k) # Insert reference City
+  st$Ref_Lat <- rep(coords$lat,each=k) # Insert reference Latitude
+  st$Ref_Lon <- rep(coords$lon, each=k) # Insert reference Longitude
+  
+  st$kilo_distance <- kns.dist # Insert distance into result
+  st <- st[with(st,order(city, kilo_distance)),]
+  st$rank <- rep(1:k,length(city.list)) # Rank closest to farthest (1 to k)
+  
+  # Queries are made to NOAA database by year:
+  st$BEGIN_Year <- as.numeric(substr(st$BEGIN,1,4)) # Start Year
+  st$END_Year <- as.numeric(substr(st$END, 1, 4)) # End Year
+  return(st)
+}
+```
+
+
+### Visual Inspection of Nearest Neighbors
+
+We now have all that is needed to begin downloading data, but before we do so we can visualize the stations of each city to understand how far away each one is from the given location. The code below for the `multiplot` function was developed by -- insert refernce -- and is used in the _____ package.  However, instead of increasing the number of dependencies of this package, we decided to copy the code for internal use.
+
+```{r NOAA: multiplot, echo=TRUE, eval=FALSE}
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL)
+{
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  numPlots = length(plots)
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout))
+  {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+  if (numPlots==1){
+    print(plots[[1]])
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+Next, we'll create the primary function to plot the stations for each city.  The inputs here are the list of city, which gets passed into the `kNStations` function we built above, full list of NOAA ISD weather stations, and the k-number of stations you wish to return. The output will be a map for each city, with one black dot and up to *k* red dots (numbered).  The black dot is the reference point for that city and the red dots represent the weather stations, labeled 1 to *k*, ordered from closest to farthest away from the reference point. 
+
+```{r NOAA: plotStations, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+plotStations <- function(city.list, station.list, k)
+{
+  kns <- kNStations(city.list, station.list, k)
+  nc <- length(city.list)
+  plots <- list()
+  for (i in 1:nc)
+  {
+    map <- suppressMessages(get_map(location = city.list[i], zoom = 10))
+    p1 <- suppressMessages(ggmap(map) +
+                             geom_point(aes(x = LON, y = LAT),
+                                        data = kns[kns$city==city.list[i],],
+                                        colour="red", size=7, alpha=.5) +
+                             geom_text(aes(x = LON, y = LAT, label=rank),
+                                       data = kns[kns$city==city.list[i],]) +
+                             geom_point(aes(x = lon, y = lat),
+                                        data = geocode(city.list[i]),
+                                        colour="black", size=7, alpha=.5)) +
+                             labs(title=city.list[i]) + theme(plot.margin=unit(c(0,0,0,0),"mm"))
+    plots[[i]] <- p1
+  }
+  if (nc == 1) plot(p1) else multiplot(plotlist = plots, cols = round(sqrt(nc)))
+}
+
+# Run the function:
+plotStations(cities.of.interest[1:4], stations, 7)
+```
+
+
+We can see that some cities have a lot of weather stations nearby, where as others only have a few. Now that we've confirmed that there should be at least one station close to each city, let's create a function to download the data. 
+
+### Downloading Data via FTP
+The data we'll be downloading are fixed width, and saved on the ftp in `.gz` format. The widths and column names of the station data is as follows.
+
+```{r NOAA: file formats, echo=TRUE, eval=FALSE}
+
+col.width <- c(4, 6, 5, 4, 2, 2, 2, 2, 1, 6, 7, 5, 5, 5, 4, 3, 1,
+               1, 4, 1, 5, 1, 1, 1, 6, 1, 1, 1, 5, 1, 5, 1, 5, 1)
+
+col.names <- c("CHARS", "USAFID", "WBAN", "YR", "M", "D", "HR", "MIN",
+               "DATE.FLAG", "LAT", "LONG", "TYPE.CODE", "ELEV", "CALL.LETTER",
+               "QLTY", "WIND.DIR", "WIND.DIR.QLTY", "WIND.CODE",
+               "WIND.SPD", "WIND.SPD.QLTY", "CEILING.HEIGHT", "CEILING.HEIGHT.QLTY",
+               "CEILING.HEIGHT.DETERM", "CEILING.HEIGHT.CAVOK", "VIS.DISTANCE",
+               "VIS.DISTANCE.QLTY", "VIS.CODE", "VIS.CODE.QLTY",
+               "TEMP", "TEMP.QLTY", "DEW.POINT", "DEW.POINT.QLTY",
+               "ATM.PRES", "ATM.PRES.QLTY")
+```
+
+Now we can begin building a function that will download data for a range of years for each of the k-nearest stations to each city that is found in the `kNStations` function.  The function will have 3 inputs: the result of the `kNStations` function, a beginning year, and an ending year (both in 4-digit format). 
+
+```{r dlStationData, echo=TRUE, eval=FALSE}
+
+dlStationData <- function(kns, beg, end)
+{
+  base.url <- "ftp://ftp.ncdc.noaa.gov/pub/data/noaa/"
+  nstations <- nrow(kns)
+  yrs <- seq(beg,end,1)
+  nyrs <- end-beg+1
+  usaf <- as.numeric(kns$USAF)
+  wban <- as.numeric(kns$WBAN)
+  # The following dataframe will be printed to show
+  # which files were successfully downloaded
+  status <- data.frame()
+  temp <- as.data.frame(matrix(NA,nstations,5))
+  names(temp) <- c("File","Status", "City", "rank", "kilo_distance")
+  temp$City <- kns$city
+  temp$rank <- kns$rank
+  temp$kilo_distance <- kns$kilo_distance
+  # Setup for the list of data
+  temp.list <- df.list <- list()
+  city.names <- unlist(lapply(strsplit(kns$city,", "), function(x) x[1])) # City Name
+  df.names <- paste(city.names, kns$USAF, sep="_") # City Name_USAF#
+
+  # Download the desired stations into a list (does not save to disk)
+  for (i in 1:nyrs)
+  {
+    for (j in 1:nstations)
+    {
+      # Create file name
+      temp[j,1] <- paste(usaf[j],"-",wban[j],"-", yrs[i], ".gz", sep = "")
+      tryCatch({
+        # Create connect to the .gz file
+        gz.url <- paste(base.url, yrs[i], "/", temp[j, 1], sep="")
+        con <- gzcon(url(gz.url))
+        raw <- textConnection(readLines(con))
+        # Read the .gz file directly into R without saving to disk
+        temp.list[[j]] <- read.fwf(raw, col.width)
+        close(con)
+        # Some housekeeping:
+        names(temp.list)[j] <- df.names[j]
+        names(temp.list[[j]]) <- col.names
+        temp.list[[j]]$LAT <- temp.list[[j]]$LAT/1000
+        temp.list[[j]]$LONG <- temp.list[[j]]$LONG/1000
+        temp.list[[j]]$WIND.SPD <- temp.list[[j]]$WIND.SPD/10
+        temp.list[[j]]$TEMP <- temp.list[[j]]$TEMP/10
+        temp.list[[j]]$DEW.POINT <- temp.list[[j]]$DEW.POINT/10
+        temp.list[[j]]$ATM.PRES <- temp.list[[j]]$ATM.PRES/10
+        temp.list[[j]]$city <- city.names[j]
+        temp.list[[j]]$distance <- kns$kilo_distance[j]
+        temp.list[[j]]$rank <- kns$rank[j]
+        temp[j,2] <- "Success"
+      },
+      error=function(cond)
+      {
+        return(NA)
+        next
+      },
+      finally={ # if any of the files didn't download successfully, label as such
+        if(is.na(temp[j,2])=="TRUE") temp[j,2] <- "Failed"
+      })
+    }
+    # Combine each year's status and list
+    status <- rbind(status, temp)
+    status <- status[order(status[,3], status[,4], status[,1]),]
+    df.list <- append(df.list, temp.list)
+  }
+  output.list <- list(status, df.list)
+  names(output.list) <- c("dl_status", "station_data")
+  return(output.list)
+}
+
+```
+
+The output of the above function gives a list of two items.
+1) The status of downloading data for each year of each station.  It will show either "Failed" or "Success"
+2) A list of dataframes for each year of station. 
+
+The next step is to reduce the number of dataframes we need to work with by combining the data of each year for the same station. 
+
+### Data Compilation
+```{r NOAA: combineWeatherDFs, echo=TRUE, eval=FALSE}
+combineWeatherDFs <- function(dfList)
+{
+  combined.list <- list()
+  keys <- unique(names(dfList$station_data))
+  keys <- keys[keys!=""]
+  nkeys <- length(keys)
+  for (i in 1:nkeys)
+  {
+    track <- which(names(dfList$station_data)==keys[i])
+    combined.list[[i]] <- as.data.frame(rbindlist(dfList$station_data[track]))
+    names(combined.list)[i] <- keys[i]
+  }
+  output.list <- list(dfList$dl_status, combined.list)
+  names(output.list) <- c("dl_status", "station_data")
+  return(output.list)
+}
+```
+
+We're now ready to put this all together into one function:
+
+```{r NOAA getStationByCity, echo=TRUE, eval=FALSE}
+getStationsByCity <- function(city.list, station.list, k, begin, end)
+{
+  kns <- kNStations(city.list, station.list, k)
+  weatherDFs <- dlStationData(kns, begin, end)
+  combined.list <- combineWeatherDFs(weatherDFs)
+  return(combined.list)
+}
+```
+
+### Data Filters
+This is essentially the guts of the package, however we need to perform two more steps for our future analysis.  First, we only need one weather station for each city.  Thus far, we have not filtered out any stations so the output of the function above could have up to k-stations for each city.  We will establish minimum standards for each dataset, evaluate each station's data, then select station containing the best data. Second, we need observations at every hour of every year.  No matter how good the weather station is, it is bound to have some missing observations.  Therefore, we will use a method linear interpolation to estimate the missing observations. 
+
+These two steps will be add-ons to the function above, so let's start by creating a filtering mechanism.  We have four steps in our filtering/selection process:
+1) Remove stations with little to no data
+2) Remove stations that exceed a maximum distance from each city's reference point
+3) Remove stations that exceed a threshold of missing data, including NA values
+4) Select closest station remaining for each city, as all remaining stations are deemed adequate
+
+```{r NOAA: filterStationData, echo=TRUE, eval=FALSE}
+filterStationData <- function(comb.list, distance, hourly_interval, tolerance, begin, end)
+{
+
+  dlStatus <- comb.list$dl_status
+  comb.list <- comb.list$station_data
+
+  city.names <- unlist(lapply(comb.list, function(x) unique(x$city)))
+
+  # 1) remove stations with little to no data at all
+  rm.junk <- names(comb.list[which(sapply(comb.list, function(x) dim(x)[1] <= 10))])
+  comb.list <- comb.list[which(sapply(comb.list, function(x) dim(x)[1] > 10))]
+
+  # 2) remove stations that exceed maximum distance
+  rm.dist <- names(comb.list[which(sapply(comb.list, function(x) max(x["distance"])) > distance)])
+  comb.list <- comb.list[which(sapply(comb.list, function(x) max(x["distance"])) < distance)]
+
+  # keep track of which stations have been removed
+  rm.tmp <- unique(c(rm.junk, rm.dist))
+
+  lapply(comb.list, names)
+  # 3.a) remove stations that exceed threshold of missing data,
+  # start with counting the 999s:
+  cl <- c("TEMP", "DEW.POINT") # Additional columns can be added
+  ix <- ix.tmp <- NULL
+  ix.ct <- as.data.frame(matrix(nrow=length(comb.list), ncol=length(cl)))
+  colnames(ix.ct) <- cl
+  rownames(ix.ct) <- names(comb.list)
+  for (L in 1:length(comb.list))
+  {
+    for (i in 1:length(cl))
+    {
+      ix.tmp <- which(comb.list[[L]][cl[i]]==999.9 | comb.list[[L]][cl[i]]==999 |
+                        comb.list[[L]][cl[i]]==99.99)
+      ix.ct[L,i] <- length(ix.tmp)
+      ix <- union(ix,ix.tmp)
+    }
+    comb.list[[L]] <- comb.list[[L]][-ix,]
+  }
+  ix.ct$temp_pct <- ix.ct[,cl[1]]/unlist(lapply(comb.list,nrow))
+  ix.ct$dew_pct <- ix.ct[,cl[2]]/unlist(lapply(comb.list,nrow))
+  # print(ix.ct)
+
+  # ms.obs <- (ix.ct$TEMP)+(ix.ct$DEW.POINT)
+
+  # 3.b) set a minimum number of observations and remove stations that do not
+  # meet requirement
+  yrs <- seq(begin,end,1)
+  nyrs <- end-begin+1
+  min.obs <- (24/hourly_interval)*365*nyrs*(1-tolerance)
+  obs.ix <- which(sapply(comb.list, nrow) < min.obs)
+  rm.obs <- names(comb.list[which(sapply(comb.list, nrow) < min.obs)])
+  if(length(rm.obs)==0) comb.list <- comb.list else comb.list <- comb.list[-obs.ix]
+
+  # update removed stations
+  rm.all <- unique(c(rm.tmp, rm.obs))
+
+  # 4) All current stations are assumed to be adequet,
+  #   we therefore will take the closest to each reference point
+  kept.names <- substr(names(comb.list),1,nchar(names(comb.list))-7)
+  kept.ranks <- unname(unlist(lapply(comb.list, function(x) x["rank"][1,1])))
+  f.df <- data.frame(location=kept.names, ranks=kept.ranks)
+  kp.ix <- as.numeric(rownames(f.df[which(ave(f.df$ranks,f.df$location,FUN=function(x) x==min(x))==1),]))
+  final.list <- comb.list[kp.ix]
+
+  # Show what was removed during the filtering process:
+  kept <- names(comb.list)
+  st.df <- data.frame(count(city.names))
+  rm.df <- count(substr(rm.all, 1, nchar(rm.all)-7))
+  kept.df <- count(substr(kept, 1, nchar(kept)-7))
+  df.list <- list(st.df, rm.df, kept.df)
+  mg.df <- Reduce(function(...) merge(..., by="x", all=T), df.list)
+  suppressWarnings(mg.df[is.na(mg.df)] <- 0)
+  colnames(mg.df) <- c("city", "stations", "removed", "kept")
+  filterStatus <- mg.df
+
+  # Show the stations that will be in the final output:
+  finalStations <- names(final.list)
+
+  # Create a list for output
+  finalOutput <- list(dlStatus, filterStatus, finalStations, final.list)
+  names(finalOutput) <- c("dl_status", "removed_rows", "station_names_final", "station_data")
+  return(finalOutput)
+}
+
+```
+
+This function returns a list of four items.  The download status, which is the same as prior functions, a dataframe showing the number and percentage of rows that were filled with NA values, the names of the stations selected in the last step, and the data of those stations.  It should be noted that the fourth item is a list of dataframes. 
+
+At this point, you could add a line for `filterStationData` to the `getStationsByCity`, however we still need to interplate missing values.  This intermediate step is included as a separate function in the package, however we will skip it here.  
+
+### Data Interpolation
+The final step is to create a function to interpolate all the missing values in each station's dataset.
+
+```{r NOAA: interplateData, echo=TRUE, eval=FALSE}
+interpolateData <- function(wx.list)
+{
+  clean.list <- lapply(wx.list, function(x){
+    ddply(x, .(city, USAFID, distance, rank, YR, M, D, HR), summarise,
+          LAT=mean(LAT), LONG=mean(LONG), ELEV=mean(ELEV),
+          TEMP=mean(TEMP), DEW.POINT=mean(DEW.POINT))})
+
+  # Create a column with the full posix date for each hour
+  for (i in 1:length(clean.list))
+  {
+    clean.list[[i]]$dates <- as.POSIXct(paste(paste(clean.list[[i]]$YR,"-",clean.list[[i]]$M,
+                                                    "-",clean.list[[i]]$D, " ",clean.list[[i]]$HR,sep=""),
+                                              ":",0,":",0,sep=""),"%Y-%m-%d %H:%M:%S", tz="UTC")}
+
+  # Create a list of dataframes of each hour
+  hourly.list <- list()
+  for (i in 1:length(clean.list))
+  {
+    hourly.list[[i]] <- data.frame(hours=seq(
+      from=as.POSIXct(paste(min(clean.list[[i]]$YR),"-1-1 0:00", sep=""), tz="UTC"),
+      to=as.POSIXct(paste(max(clean.list[[i]]$YR),"-12-31 23:00", sep=""), tz="UTC"),
+      by="hour"))
+  }
+
+  wx.df <- data.frame()
+  for (i in 1:length(clean.list))
+  {
+    temp.df <- merge(hourly.list[[i]], clean.list[[i]], by.x="hours", by.y="dates", all.x=TRUE)
+    temp.df$city <- unique(na.omit(temp.df$city))[1]
+    temp.df$USAFID <- unique(na.omit(temp.df$USAFID))[1]
+    temp.df$distance <- unique(na.omit(temp.df$distance))[1]
+    temp.df$rank <- unique(na.omit(temp.df$rank))[1]
+    temp.df$LAT <- unique(na.omit(temp.df$LAT))[1]
+    temp.df$LONG <- unique(na.omit(temp.df$LONG))[1]
+    temp.df$ELEV <- unique(na.omit(temp.df$ELEV))[1]
+    temp.df$YR <- as.numeric(format(temp.df$hours,"%Y"))
+    temp.df$M <- as.numeric(format(temp.df$hours,"%m"))
+    temp.df$D <- as.numeric(format(temp.df$hours,"%d"))
+    temp.df$HR <- as.numeric(format(temp.df$hours,"%H"))
+
+    # Interpolation
+    temp.int <- approx(x=temp.df$hours, y=temp.df$TEMP, xout=temp.df$hours)
+    temp.df$TEMP <- temp.int$y
+    dew.int <- approx(x = temp.df$hours, y = temp.df$DEW.POINT, xout = temp.df$hours)
+    temp.df$DEW.POINT <- dew.int$y
+
+    # Merge the dataframes together
+    wx.df <- rbind(wx.df, temp.df)
+  }
+  return(wx.df)
+}
+```
+
+The output of this function is a single, large, dataframe with hourly observations for the station with the 'best' data for each city.  
+
+### Putting It All Together
+Putting it all together, we end with the following function which will then feed data in the next step of our analysis. 
+
+```{r NOAA: getInterpolatedDataByCity, echo=TRUE, eval=FALSE}
+getInterpolatedDataByCity <- function(city.list, station.list, k, begin, end, distance, hourly_interval, tolerance)
+{
+  kns <- kNStations(city.list, station.list, k)
+  weatherDFs <- dlStationData(kns, begin, end)
+  combined.list <- combineWeatherDFs(weatherDFs)
+  filteredData <- filterStationData(combined.list, distance, hourly_interval, tolerance, begin, end)
+  interpolation <- interpolateData(filteredData$station_data)
+  return(interpolation)
+}
+```
+
+## References
+Segal, M., H. Shafir, M. Mandel, P. Alpert and Y. Balmor (1992). Climatic-related Evaluations of the Summer Peak-hours’ Electric Load in Israel, *Journal of Applied Meteorology* 31 (1992): 1492-1498.
+
+Thatcher, M. J. (2007). Modelling Changes to Electricity Demand Load Duration Curves as a Consequency of Predicted Climate Change for Australia. *Energy* 32 (2007): 1647-1659.
+
+Hellmuth M.E., Osgood D.E., Hess U., Moorhead A. and Bhojwani H. (eds) 2009. *Index insurance and climate risk: Prospects for development and disaster management*. Climate and Society No. 2. International Research Institute for Climate and Society (IRI), Columbia University, New York, USA.
+
+Rogers, David and Vladimir Tsirkunov (2011). *Implementing Hazard Early Warning Systems*. Global Facility for Disaster Reduction and Recovery (GFDRR) in support of strengthening Weather and Climate Information and Decision Support Systems (WCIDS).
+
+Lambert T., Gilman P., Lilienthal P., Micropower system modeling with HOMER, Integration of Alternative Sources of Energy, Farret FA, Simões MG, John Wiley & Sons, December 2005, ISBN 0471712329
+
+Lilienthal P.D., Lambert T.W., Gilman P., Computer modeling of renewable power systems, Cleveland CJ, editor-in-chief, Encyclopedia of Energy, Elsevier Inc., Volume 1, pp. 633-647, NREL Report No. CH-710-36771, 2004
+
+
+
+
