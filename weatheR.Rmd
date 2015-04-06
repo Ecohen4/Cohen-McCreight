@@ -1,17 +1,16 @@
 ---
-title: "Geo-Referenced Weather Data Pipeline for R"
-author: "Michael Piccirilli, Elliot Cohen and James McCreight"
-date: "January 14, 2015"
+title: "Weather data pipeline for R"
+author: "By Elliot Cohen, Michael Piccirelli and James McCreight "
+date: "January 8, 2015"
 output:
   html_document:
     toc: yes
   pdf_document:
     toc: yes
     toc_depth: 3
-theme: journal
+theme: spacelab
 ---
 
-****
 ## Motivation
 Long observational records of high-resolution weather data are instrumental to a wide range of research and development applications. Such data are essential to energy demand forecasts (Segal et al. 1992; Sailor 2001; Crowley et al. 2003; Thatcher 2007, Cohen et al. 2014), building energy models (Deru et al. 2011), renewable energy feasibility and siting assessments (Lambert et al. 2005), crop insurance programs (Helmath et al. 2009), emergency preparedness and early warning systems (Rogers and Tsirkunov 2011), and much more.
 
@@ -19,7 +18,7 @@ Globally, national weather services and climate information centers such as the 
 
 NOAA scientists offer a wealth of meteorological/climatological information through the NCDC data portal. The data is available on the [Online Climate Data Directory](http://www.ncdc.noaa.gov/cdo-web/) website. It is also available via FTP, which is more effecient for batch queries, and is the method we will use here.
 
-The following article, and the accompanying `weatheR` library built for the statistical computing language R, automates and expedites the process of downloading and processing NOAA weather station data in R. It is built for quality-control batch query of NOAA's National Climatic Data Center (NCDC)--the world's largest active archive of weather data. This work builds on "Downloading and processing NOAA hourly weather station data" by Delameter et al. (YEAR). The objective is to make meteorological data more accessible for a wide range of scientists, engineers and practicioners familiar with data analysis in R, but less familiar with handling large meteorological datasets in particular. The `weatheR` libary introduces new functionality previously unavailable in an R library:
+The following article, and the accompanying `weatheR` library built for the statistical computing language R, is intended to facilitate geo-referenced and quality-control batch query of NOAA's National Climatic Data Center (NCDC)--the world's largest active archive of weather data. Our work builds on "Downloading and processing NOAA hourly weather station data" by Delameter et al. (YEAR). Our goal is to make meteorological data more accessible for a wide range of scientists, engineers and practicioners familiar with data analysis in R, but less familiar with the handling large meteorological datasets in particular. The weatheR libary introduces new functionality and automation previously unavailable:
 
 * Identification and selection of nearest-neighbor weather stations for virtually any place on Earth. Locations of interest are geo-referenced via the Google Maps API.
 * Batch query with a simple charachter string of location names (e.g. "New York City", "Tiennamen Square", "Abuja, Nigeria")
@@ -27,8 +26,9 @@ The following article, and the accompanying `weatheR` library built for the stat
 * Quick visual inspection to make sure you're getting the right data.
 
 ## The weatheR library
-### Open-Source and Free to All!
-We created the `weatheR` package with all the necessary functions to download, transform, and plot NOAA weather station data. The package has 7 R package dependencies: `httr`, `ggmap`, `FNN`, `McSpatial`, `data.table`, `plyr`, `gridExtra`.  The package is available on GitHub at [https://github.com/mpiccirilli/weatheR](https://github.com/mpiccirilli/weatheR). To start using the `weatheR` package immediately, all you need are the following three lines of code:
+### Open-Source and Available to All!
+We created the `weatheR` package with all the necessary functions to download, transform, and plot NOAA weather station data. This package has 4 R package dependencies: `httr`, `ggmap`, `ggplot2`, and `grid`.  The package is available on GitHub at [https://github.com/mpiccirilli/weatheR](https://github.com/mpiccirilli/weatheR). To start using the `weatheR` package immediately, all you need are the following three lines of code:
+
 ```{r weatheR, eval=FALSE, echo=TRUE}
 ## install weatheR library (beta version from github)
 require(devtools)
@@ -36,90 +36,183 @@ install_github("mpiccirilli/weatheR")
 require(weatheR)
 ```
 
-### Dependencies
-The following article goes step-by-step through the functions in the `weatheR` package. 
-```{r loadLibraries, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
-## The following function will load the packages required for this tutorial.  If a package cannot be found in your instance of Rstudio, it will automatically be insalled.
-## require() returns (invisibly) a logical indicating whether the required package is available.
+### Functions
 
-# if (!require(rgdal)) install.packages('rgdal')
-load_install<-function(lib){
-  if(! require(lib, character.only=TRUE)) install.packages(lib) 
-  library(lib, character.only=TRUE, quietly=TRUE)
-}
+This package has **utility** functions and **data** funcitons. The **data** functions allow users to download data from the NOAA database, whereas the **utility** functions are used primarily in facilitating the data download process.  We'll first define each function then go through an example of downloading data with several of the **data** functions, explaining the mechanics of each utility function along the way.
 
-## the required libraries (e.g. packages)
-Thelib<-c("devtools", "knitr", "plyr", "ggplot2", "ggmap", "gridExtra", "httr", "FNN", "data.table", "McSpatial")
+#### Utility Functions:
 
-## apply the function
-lapply(Thelib, load_install)
+- `allStations`: allows the user to download the full list of Integrated Surface Database (ISD) weather stations.  The list of stations, as of <<insert date>>, is actually included in the package and can be loaded into the session by calling: `data(stations)`. The purpose for this function however is so that in the event this list is updated, the user does not have to rely solely on the list included in the package.
 
-## set document settings
-opts_chunk$set(fig.path='Figs/', cache=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+- `kNStations`:  this function is the heart of the package and is used in every data downloading function.  Using The Great Circle distance calculation, this funciton finds the k-nearest weather stations to a given input location.  The distance from a refernce point and each station is quoted in kilometers. 
+
+- `plotStations`: plots each reference point and its respective k-nearest stations.  This function was included as to provide a quick visual inspection to make sure you're getting the right data.
+
+- `interpolateData`: this is a funciton with limited use and sole purpose is to interpolate missing data from the weather stations so that we can run future analysis. It takes in a list of dataframes which is the output from all of the downloading data functions. 
+
+- `plotDailyMax`:  We might want to take this function out for now?
+
+#### Data Functions:  
+
+There are four data functions, each of which has a unique level of 'functional autonomy' (does this sound like crazy talk?).  At the lowest level you can specify the exact weather station of interest by it's NOAA identifier. The highest level will return the single 'best' station based on completeness of data and proximity to a given location, as well as linearly interpolate missing temperature values. From the lowest level of autonomy to the highest:
+
+1. Return a specific station, found by it's WBAN ID
+    - `getStationsByID`: This allows users to specify a weather station of choice. The user can either look up the stations prior to using the package, or use the `kNstations` function to pre-select a station of interest.
+
+1. Return k-nearest stations to a location
+    - `getStationsByLocation`:  This is the primary driver of this package.  This funciton allows the user to specify any particular location, whether it be a city or any landmark that can be identified via the Google Maps API. Locations are first geo-referenced via the Google Maps API, then subsequently uses the `kNStations` function to find the k-nearest stations to each respective location.
+
+1. Return the "best" station to a given location
+    - `getFilteredStations`:  This builds on the prior function by applying customizable quality controls, based on geographic proximity to geo-referenced location the and completeness of weather station data, to return the "best" weather station for each location.  The filtering options will be discussed more thoroughly later. 
+
+1. Return the "best" station to a given location and interpolate missing data
+    - `getInterpolatedData`:  This function goes one step beyond the previous.  It makes the same station selection based on proximity and completeness of data, but it then interpolates all the missing temperature values. 
+
+Below is a table of all the functions mentioned above:
+
+```{r package dependencies, message=FALSE, eval=FALSE, echo=FALSE}
+require(knitr)
+pkgFunctions <- data.frame(Utilities=c("allStations", "knStations",
+                                       "plotStations", "interpolateData"),
+                           Data=c("getStationsByID", "getStationsByLocation",
+                           "getFilteredStations", "getInterpolatedData") )
+
+kable(pkgFunctions, format = "markdown")
 ```
 
-### List of Weather Stations
-The first step is to download the list of all ISD weather stations which can be found in the following location: [ftp://ftp.ncdc.noaa.gov/pub/data/noaa/](ftp://ftp.ncdc.noaa.gov/pub/data/noaa/). The current list of weather stations can be found in a file called **`isd-history.txt`** or **`isd-history.csv`**.
 
-```{r NOAA: allStations, echo=TRUE, eval=TRUE}
+### Dependencies
+
+Before we can go through the mechanics of each function, we need to load in the package dependencies mentioned above. 
+
+```{r loadLibraries, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE}
+# require(weatheR)
+packages <- c('httr', "ggmap", "ggplot2", "grid")
+
+pkgCheck <- function(packages)
+{
+  test <- sapply(packages, function(x){
+    pkg <- suppressWarnings( library(x, logical.return = TRUE, character.only = TRUE) )
+    sapply(names(pkg[pkg==1]), function(x) require(x, character.only = TRUE) )
+    sapply(names(pkg[pkg==0]), function(x) print(x) )
+    return(pkg)
+    })
+}
+
+```
+
+### Station List
+
+Once we load the package into memory, our first step will be to download the full list of ISD weather stations from the NOAA database which can be found here: [ftp://ftp.ncdc.noaa.gov/pub/data/noaa/](ftp://ftp.ncdc.noaa.gov/pub/data/noaa/). The name of the file in that directory is called **`isd-history.txt`** or **`isd-history.csv`**.
+
+As mentioned above, we have included the dataset in the package (subsetted to exclude stations without LAT/LON coordinates), and can be loaded into memory by calling `data(stations)`. However we built this function to download the list from the database incase it is updated in the future.
+
+```{r NOAA: allStations, echo=TRUE, eval=FALSE}
 allStations <- function()
 {
-  isd <- "ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv"
+  # Full list of ISD weather stations:
+  isd <- "ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.csv" 
+  # 
   response <- suppressWarnings(GET(isd))
   all <- read.csv(text=content(response, "text"), header = TRUE)
-  colnames(all)[c(3, 9)] <- c("NAME", "ELEV")
-  all <- all[!is.na(all$LAT) & !is.na(all$LON),]
+  colnames(all)[c(3, 9)] <- c("NAME", "ELEV") # Renaming for ease and consistency
+  all <- all[!is.na(all$LAT) & !is.na(all$LON),] # Removing stations without LAT/LON data
   return(all)
 }
-stations <- allStations()
-
+stations <- allStations() # Assigns our subsetted list of ISD stations to variable 'stations'
 head(stations)
 ```
 
-Side note: this dataset is included in the package and can be called into memory by executing `data(station.list)`.
+```{r noaa: allstations noeval, echo=FALSE, eval=FALSE}
+data(stations)
+kable(head(station.list), format = "markdown")
+```
 
-In the 5th line of the function above, we elimiated stations that do not contain either Latitude or Longitute coordines. We do this because we'll be using the Latitude and Longitude coordinates provided in this dataset to find the closest weather stations to our cities of interest. The amount of data that is lost from this step is minimal, approximately 1,300 of 29,000 weather stations.
+It should be noted that the amount of data lost from the removal stations without LAT/LON data is minimal, approximately 1,300 out of 29,000 weather stations.
+
 
 ### Places of Interest
-Now that we have the full list of weather stations, let's focus on what stations we want to hone in on.  Let's create a vector of cities for which we'd like to find data. For demonstration, we'll use a few cities in the table of the World's Fastest Growing Cities mentioned above.
 
-[comment: do we need to include city and country name to avoid mis-maatches?  For example, there may be more than one "Victoria" in the world]
-```{r NOAA: cities, echo=TRUE, eval=TRUE}
+Now that we have the full list of weather stations, let's focus on what stations we want to hone in on.  As mentioned above, the k-nearest stations are based on geo-referenced locations attained via the Google Maps API.  For a location such as a state or country, Google Maps will return the centroid.  However if you use a specific location such as a city or landmark, the geocode will be more precise.
+
+If you would like to return the geocode of a city, it is advisable to specify the state or country in which it is located so as to eliminate the possibility of a mis-matched result. Similarly, if you have multiple cities of the same name you will need to specify the state or country as well, otherwise the Google Maps API will only return one location for all the repeated cities. 
+
+For demonstration, we'll use a few cities in the table of the World's Fastest Growing Cities mentioned in [cite other paper].
+
+```{r NOAA: cities, echo=TRUE, eval=FALSE}
 cities.of.interest <- c("Nairobi, Kenya", "Tema, Ghana", "Accra, Ghana", "Abidjan, Ivory Coast")
 ```
 
+
 ### Nearest Neighbor Search
-We now create a function that allows us the find the k-nearest weather stations to each of the cities mentioned above. This function finds a reference point for each city by using the Google Maps API from the package `ggmap` to find Latitude and Longitude coordinates of each city. It then passes these coordiates into a KNN function from the `FNN` package to find the k-nearest weather stations, which uses Euclidean distance.  While the difference between Euclidean distance and distances calculated using the great circle formula are minimal, we did notice that some stations were indeed ordered incorrectly using Euclidean distance.  Therefore we decided to calculate distance, coverted into Kilometers, based on the great circle formula. 
 
-The input of this function is a list of cities (or an individual city), the full list of ISD stations, and the k-nearest stations you wish to return. The format of the `city.list` should be "City, State" or "City, Country", whichever is applicable. 
+Before we can find the k-nearest stations we need an accurate metric to measure distance between a location's reference point and each station. The commonly accepted calculation of distance between two points on the earth's surface is based the great circle.
 
-```{r NOAA: kNStations, echo=TRUE, eval=TRUE}
-kNStations <- function(city.list, station.list, k)
+#### The Great Circle
+
+Distance calculated based on a great circle is the distance between two points on the surface of a sphere. This is different from the Euclidean distance, which would measure a straight line through the sphere's interior. Below are the functions used to calculate the great cirle.
+
+```{r great circle, echo=TRUE, eval=TRUE}
+deg2rad <- function(deg) return(deg*pi/180)
+
+gcd.slc <- function(long1, lat1, long2, lat2) {
+  long1 <- deg2rad(long1)
+  lat1 <- deg2rad(lat1)
+  long2 <- deg2rad(long2)
+  lat2 <- deg2rad(lat2)
+  R <- 6371 # Earth mean radius in km
+  d <- acos(sin(lat1)*sin(lat2) + cos(lat1)*cos(lat2) * cos(long2-long1)) * R
+  return(d) # Distance in km
+}
+```
+
+Note: This does not take elevation into account, however we will look into adding this feature into future versions of the package.
+
+
+#### k-Nearest Stations
+
+We can now use the distance metric calculated in the above functions to find the k-nearest stations to a given location.  Each input location into the function is passed into the `geocode` function in the `ggmap` package, which sends a query to the Google Maps API and returns a pair of Latitude and Longitude coordinates. Once we have a set of LAT/LON coordiates for each location, we then calculate the distance of every station for each location, sort for the shortest distances, and return only the *k* stations desired.
+
+```{r NOAA: kNStations, echo=TRUE, eval=FALSE}
+kNStations <- function(city.list, station.list, k = 5)
 {
+  # Find geocodes of each city
   coords <- suppressMessages(geocode(city.list))
-  # Find k-nearest weather stations to the reference point
-  kns <- get.knnx(as.matrix(station.list[,c(8,7)]),as.matrix(coords), k)
-  st <- station.list[kns$nn.index[,],]
-  # Add additional fields to the dataset
-  st$city <- rep(city.list,nrow(st)/nrow(coords)) # Reference City
-  st$Ref_Lat <- rep(coords$lat,nrow(st)/nrow(coords)) # Reference Latitude
-  st$Ref_Lon <- rep(coords$lon, nrow(st)/nrow(coords)) # Reference Longitude
-  kilos.per.mile <- 1.60934
-  st$kilo_distance <- geodistance(st$Ref_Lon,st$Ref_Lat,st$LON,st$LAT,
-                                  dcoor = FALSE)$dist*kilos.per.mile # Convert miles to kilos
+  
+  # Loop through each location, finding the k-nearest stations from the main list:
+  kns.ix <- NULL # create a variable to track row index the stations
+  kns.dist <- NULL # create a distance variable
+  for(i in 1:length(city.list))
+  {
+    # Great cirle distance calculator:
+    dist <- gcd.slc(coords$lon[i], coords$lat[i], station.list$LON, station.list$LAT)
+    distSort <- sort(dist, ind=TRUE) 
+    tmp.ix <- distSort$ix[1:k] # temporary index variable for the loop
+    tmp.dist <- distSort$x[1:k] # temporary distance variable for the loop
+    kns.ix <- c(kns.ix, tmp.ix) # append row index of stations for each location
+    kns.dist <- c(kns.dist, tmp.dist) # append distances of stations for each location
+  }
+  st <- station.list[kns.ix,] # Subset the full list with k-nearest stations
+  st$city <- rep(city.list, each=k) # Insert reference City
+  st$Ref_Lat <- rep(coords$lat,each=k) # Insert reference Latitude
+  st$Ref_Lon <- rep(coords$lon, each=k) # Insert reference Longitude
+  
+  st$kilo_distance <- kns.dist # Insert distance into result
   st <- st[with(st,order(city, kilo_distance)),]
-  st$rank <- rep(1:k,length(city.list)) # Rank is list from 1-k, closest to farthest
-  st$BEGIN_Year <- as.numeric(substr(st$BEGIN,1,4))
-  st$END_Year <- as.numeric(substr(st$END, 1, 4))
-  # st <- st[st$BEGIN_Date <= beg & st$END_Date >= end, ] # remove stations without complete data
+  st$rank <- rep(1:k,length(city.list)) # Rank closest to farthest (1 to k)
+  
+  # Queries are made to NOAA database by year:
+  st$BEGIN_Year <- as.numeric(substr(st$BEGIN,1,4)) # Start Year
+  st$END_Year <- as.numeric(substr(st$END, 1, 4)) # End Year
   return(st)
 }
 ```
 
 ### Visual Inspection of Nearest Neighbors
-We now have all that is needed to begin downloading data, but before we do so we can visualize the stations of each city to understand how far away each station is from a city's central reference point.  The code below first sets up the ability to print multiple plots in the case using a vector of cities, as we have above. 
 
-```{r NOAA: multiplot, echo=TRUE, eval=TRUE}
+We now have all that is needed to begin downloading data, but before we do so we can do a quick visual inspection to see how far away the selected weather stations are from the location of interest. The code below for the `multiplot` function was developed by << insert refernce >> and is used in the <<  >> package.  However, instead of increasing the number of dependencies of this package, we decided to copy the code for internal use.
+
+```{r NOAA: multiplot, echo=TRUE, eval=FALSE}
 multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL)
 {
   # Make a list from the ... arguments and plotlist
@@ -152,9 +245,9 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL)
 }
 ```
 
-Next, we'll create the main function to plot the stations for each city.  The inputs here are again the list of cities, full list of NOAA ISD weather stations, and the k-number of stations you wish to return. The output will be a map for each city, with one black dot and up to *k* red dots (numbered).  The black dot is the reference point for that city and the red dots represent the weather stations, labeled 1 to *k*, ordered from closest to farthest away from the reference point. 
+Next, we'll create the primary function to plot the stations for each city.  The inputs here are the list of city, which gets passed into the `kNStations` function we built above, full list of NOAA ISD weather stations, and the k-number of stations you wish to return. The output will be a map for each city, with one black dot and up to *k* red dots (numbered).  The black dot is the reference point for that city and the red dots represent the weather stations, labeled 1 to *k*, ordered from closest to farthest away from the reference point. 
 
-```{r NOAA: plotStations, echo=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r NOAA: plotStations, echo=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 plotStations <- function(city.list, station.list, k)
 {
   kns <- kNStations(city.list, station.list, k)
@@ -178,15 +271,14 @@ plotStations <- function(city.list, station.list, k)
   if (nc == 1) plot(p1) else multiplot(plotlist = plots, cols = round(sqrt(nc)))
 }
 
-
-
 # Run the function:
 plotStations(cities.of.interest[1:4], stations, 7)
 ```
 
+
 We can see that some cities have a lot of weather stations nearby, where as others only have a few. Now that we've confirmed that there should be at least one station close to each city, let's create a function to download the data. 
 
-### Download Weather Data via FTP
+### Downloading Data via FTP
 The data we'll be downloading are fixed width, and saved on the ftp in `.gz` format. The widths and column names of the station data is as follows.
 
 ```{r NOAA: file formats, echo=TRUE, eval=FALSE}
@@ -317,7 +409,7 @@ getStationsByCity <- function(city.list, station.list, k, begin, end)
 }
 ```
 
-### Data Filter and "Best-Neighbor" Selector
+### Data Filters
 This is essentially the guts of the package, however we need to perform two more steps for our future analysis.  First, we only need one weather station for each city.  Thus far, we have not filtered out any stations so the output of the function above could have up to k-stations for each city.  We will establish minimum standards for each dataset, evaluate each station's data, then select station containing the best data. Second, we need observations at every hour of every year.  No matter how good the weather station is, it is bound to have some missing observations.  Therefore, we will use a method linear interpolation to estimate the missing observations. 
 
 These two steps will be add-ons to the function above, so let's start by creating a filtering mechanism.  We have four steps in our filtering/selection process:
@@ -476,7 +568,7 @@ interpolateData <- function(wx.list)
 
 The output of this function is a single, large, dataframe with hourly observations for the station with the 'best' data for each city.  
 
-### Put It All Together
+### Putting It All Together
 Putting it all together, we end with the following function which will then feed data in the next step of our analysis. 
 
 ```{r NOAA: getInterpolatedDataByCity, echo=TRUE, eval=FALSE}
