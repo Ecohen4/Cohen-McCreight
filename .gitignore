@@ -13,3 +13,4 @@
 *.Rproj
 *.Rhistory
 *cache*
+.DS_Store
