@@ -1,0 +1,501 @@
+---
+title: "Diurnal Patterns"
+author: "Henri Torbey, Mike Piccirilli, Yu Tian, Elliot Cohen and Vijay Modi"
+date: "October 13, 2014"
+output: html_document
+---
+
+This document explores Diurnal Energy use patterns for Delhi, Chandigarh and Singapore. It derives the Temperature-Load curve for each of these cities and calculates the corresponding gradients. 
+
+```{r setup}
+## set working director
+setwd("~/Google Drive/Global_Trends/Data")
+
+## The following function will load the packages required for this tutorial.  If a package cannot be found in your instance of Rstudio, it will automatically be insalled.
+## require() returns (invisibly) a logical indicating whether the required package is available.
+load_install<-function(lib){
+  if(! require(lib, character.only=TRUE)) install.packages(lib, character.only=TRUE) 
+  library(lib, character.only=TRUE, quietly=TRUE)
+}
+
+## the required libraries (e.g. packages)
+Thelib<-c("knitr", "plyr", "ggplot2", "scales", "reshape2", "segmented", "lubridate", "gridExtra")
+
+## apply the function
+lapply(Thelib, load_install)
+```
+
+Load custom functions for handling missing data.
+```{r functions}
+############
+## check.nas
+############
+check.nas<-function(df){
+  # count NA (missing values)
+  NAs<-sum(is.na(df))
+  print(paste("Missing Values:", NAs))
+  
+  # count incomplete records (rows containing missing values)
+  ok<-complete.cases(df)
+  print(paste("Incomplete Records:", sum(! ok)))
+  
+  # Show incomplete records (if less than 100 NAs). 
+  if(NAs > 0 & NAs <= 100) print( df[which(! complete.cases(df)), ] )
+  
+  # If more than 100, show column-wise distribution of NAs.
+  index <- which(is.na(df), arr.ind=TRUE) # row and column index of NA values
+  index <- as.data.frame(index)
+  table <- count(index, vars="col")
+  table[["label"]] <- colnames(df)[table$col]
+  
+  if (NAs > 100) {
+    barplot(height=table$freq, names.arg=table$label, xlab="column attribute", ylab="NA count", main="Column-wise distribution of missing values")
+    }
+  }
+
+############
+## recode.999s
+############
+recode.999s <- function(df){
+  # check for 999.90 values (NA code)
+  na_code <- which(df[,]==999.90 | df[,]==999.00 | df[,]==9999.9 , arr.ind=TRUE)
+  print(paste("How many 999.9s Fixed?:", dim(na_code)[1]))
+  
+  # recode 999s
+  df[na_code] <- NA # assign NA to 999.90 values
+  
+  # barchart of column-wise distribution of 9999s
+  index <- as.data.frame(na_code)
+  table <- count(index, vars="col")
+  table[["label"]] <- colnames(df)[table$col]
+  barplot(height=table$freq, names.arg=table$label, xlab="column attribute", ylab="NA count", main="Column-wise distribution of missing values")
+  
+  # return df with re-codedes NAs
+  return(df)
+  }
+
+############
+## date.time
+############
+date.time <- function(df, time_zone=NULL){
+  if (is.null(time_zone)) {
+    time_zone = "US/Eastern" # default timezone
+    }
+  
+  # conform column names to lower case
+  colnames(df) <- tolower(colnames(df))
+  
+  # coerce yr, m, d, hr to Factor
+  df[["yr"]] <- as.factor(df[["yr"]])
+  df[["m"]] <- as.factor(df[["m"]])
+  df[["d"]] <- as.factor(df[["d"]])
+  df[["hr"]] <- as.factor(df[["hr"]])
+  df[["min"]] <- as.factor(df[["min"]])
+
+  # create Date
+  df$date <- as.Date(paste(as.character(df$m), 
+                           as.character(df$d),
+                           as.character(df$yr), 
+                           sep="-"),
+                     format = "%m-%d-%Y",
+                     tz = time_zone)
+  
+  # converte Date to Factor for compatability with ddply
+  df$date <- as.factor(df$date) 
+  
+  # create POSIX date-time object
+  df$date.time <- as.POSIXlt(paste(df$yr, 
+                                   df$m,
+                                   df$d,
+                                   df$hr,
+                                   df$min,
+                                   sep="-"),
+                             format="%Y-%m-%d-%H-%M",
+                             tz= time_zone)
+  # return POSIX to charachter representation
+  df$date.time <- as.character(df$date.time)
+  return(df)
+  }
+
+```
+
+Load the required data
+```{r import.load.data}
+## import hourly demand data
+setwd("~/Google Drive/Global_Trends/Data/Demand_Data/Clean/")
+load.files <- list.files(pattern ="*Demand.csv") # string of file names
+load.list <- lapply(load.files, read.csv) # list of data frames 
+
+## grab city name from file name
+dummy <- strsplit(load.files, split="_")
+city.name <- laply(dummy, '[[', 1)
+
+## preview/check the list
+# head(load.list[[1]][]) # preview the first data.frame in the list
+lapply(load.list, function(x) head(x)) # preview all the data.frames in the list
+lapply(load.list, function(x) dim(x)) # check dimensions of each data.frame contained in the list.
+lapply(load.list, function(x) summary(x)) # summarize each data.frame contained in the list.
+lapply(load.list, function(x) sum(is.na(x))) # count NAs in each data.frame contained in the list.
+
+## check which cities contain missing data
+nas <- which(lapply(load.list, function(x) sum(is.na(x))) > 0)
+city.name[nas]  # CHECK CITY with NA
+
+# ## collect data into one big data.frame
+# load.df <- ldply(load.files, read.csv, 
+#                  stringsAsFactors=TRUE, 
+#                  header=TRUE 
+#                  )
+load.df <- ldply(.data=load.list, fun=rbind)
+
+## conform column names to lowercase
+colnames(load.df) <- tolower(colnames(load.df))
+
+load.df$yr <- as.factor(load.df$yr)
+load.df$m <- as.factor(load.df$m)
+load.df$d <- as.factor(load.df$d)
+load.df$hr <- as.factor(load.df$hr)
+load.df$min <- as.factor(load.df$min)
+load.df$mw <- as.numeric(load.df$mw)
+
+# load.df <- do.call(what=rbind, args=load.list)
+count(load.df, vars="city")
+
+## summarize by hour
+load.df2 <- date.time(load.df)
+hourly.load <- ddply(load.df2, .(city, yr, m, d, hr), numcolwise(mean, na.rm=TRUE), .progress="text")
+
+## check for missing values
+str(hourly.load)
+check.nas(hourly.load)
+
+## write the clean data.frame to .csv
+write.csv(hourly.load, file="compiled_hourly_load.csv", row.names=FALSE)
+```
+
+```{r import.wx.data}
+## import hourly/3-hourly weather data
+setwd("~/Google Drive/Global_Trends/Data/Weather_Data")
+wx.files <- list.files(pattern = "[0-9].csv") # string of file names
+wx.list <- lapply(wx.files, read.csv) # list of data frames
+city.names <- substr(wx.files, 1, nchar(wx.files)-17)
+station.num <- substr(gsub("[[:punct:]]","",gsub("[[:alpha:]]+","", wx.files)),1,6)
+names(wx.list) <- paste(city.names, station.num, sep="_")
+
+
+## preview/check the list
+lapply(wx.list, function(x) head(x)) # preview all the data.frames in the list
+lapply(wx.list, function(x) dim(x)) # check dimensions of each data.frame contained in the list.
+lapply(wx.list, function(x) summary(x)) # summarize each data.frame contained in the list.
+lapply(wx.list, function(x) sum(is.na(x))) # count NAs in each data.frame contained in the list.
+
+
+### Get the cooling degree hours and days
+for(i in 1:length(wx.list)){print(max(wx.list[[i]]["TEMP"]))}
+columns <- c("TEMP")
+index <- NULL
+index.count <- as.data.frame(matrix(nrow=length(wx.list), ncol=length(columns)))
+colnames(index.count) <- columns
+rownames(index.count) <- names(wx.list)
+for (L in 1:length(wx.list))
+{
+  for (i in 1:length(columns))
+  {
+    index <- which(wx.list[[L]][columns[i]]==999.9)
+    index.count[L,i] <- length(index)
+    for (j in 1:length(index))
+    {
+      wx.list[[L]][,columns[i]][index][j] <- wx.list[[L]][,columns[i]][index-1][j]
+    }
+  }
+}
+print(index.count)
+
+hours.list <- lapply(wx.list, function(x){
+        ddply(x, .(city, USAFID, rank, YR, M, D, HR), summarise ,LAT=mean(LAT),
+        LONG=mean(LONG), ELEV=mean(ELEV),
+        WIND.DIR=mean(WIND.DIR), WIND.SPD=mean(WIND.SPD),
+        TEMP=mean(TEMP), DEW.POINT=mean(DEW.POINT), CDH=max(mean(TEMP)-18, 0) 
+        )
+        })
+lapply(hours.list, function(x) head(x))
+kept.names <- substr(names(hours.list),1,nchar(names(hours.list))-7)
+kept.ranks <- unname(unlist(lapply(hours.list, function(x) x["rank"][1,1])))
+test <- data.frame(location=kept.names, ranks=kept.ranks)
+kept.index <- as.numeric(rownames(test[which(ave(test$ranks,test$location,FUN=function(x) x==min(x))==1),]))
+kept.hours <- hours.list[kept.index]
+lapply(kept.hours, function(x) dim(x)) 
+lapply(kept.hours, function(x) head(x))
+hours.df <- ldply(.data=kept.hours, fun=rbind)
+dim(hours.df)
+cdh <- data.frame(aggregate(CDH ~ city+YR, data=hours.df, sum))
+
+days.list <- lapply(wx.list, function(x){
+        ddply(x, .(city, USAFID, rank, YR, M, D), summarise ,LAT=mean(LAT),
+        LONG=mean(LONG), ELEV=mean(ELEV),
+        WIND.DIR=mean(WIND.DIR), WIND.SPD=mean(WIND.SPD),
+        TEMP=mean(TEMP), DEW.POINT=mean(DEW.POINT), CDD=max(mean(TEMP)-18,0))})
+kept.names <- substr(names(days.list),1,nchar(names(days.list))-7)
+kept.ranks <- unname(unlist(lapply(days.list, function(x) x["rank"][1,1])))
+test <- data.frame(location=kept.names, ranks=kept.ranks)
+kept.index <- as.numeric(rownames(test[which(ave(test$ranks,test$location,FUN=function(x) x==min(x))==1),]))
+kept.days <- days.list[kept.index]
+lapply(kept.days, function(x) dim(x)) 
+lapply(kept.days, function(x) head(x)) 
+days.df <- ldply(.data=kept.days, fun=rbind)
+dim(days.df)
+aggregate(CDD ~ city+YR, data=days.df, sum)
+cdd <- data.frame(aggregate(CDD ~ city+YR, data=days.df, sum))
+
+cooling.degrees <- data.frame(city=cdd$city, YR=cdd$YR, CDH=cdh$CDH, CDD=cdd$CDD)
+par(mfrow=c(1,1))
+plot(cooling.degrees$city, cooling.degrees$CDD, main="Days")
+plot(cooling.degrees$city, cooling.degrees$CDH, main="Hours")
+
+plot(days.df[days.df$city=="Batam",]$CDD)
+plot(days.df[days.df$city=="Samut Prakan",]$CDD)
+
+# ## collect data into one big data.frame
+# wx.df <- ldply(wx.files, read.csv, 
+#                  stringsAsFactors=TRUE, 
+#                  header=TRUE 
+#                  ) # one long data frame
+
+wx.df <- ldply(.data=wx.list, fun=rbind)
+colnames(wx.df) <- tolower(colnames(wx.df))
+str(wx.df)
+
+## subset to just the columns we want...
+vars_to_keep <- c("city", "yr", "m", "d", "hr", "min", "temp", "dew.point", "wind.spd", "lat")
+wx.df2 <- subset(wx.df, select = vars_to_keep)
+
+## recode 9999, 999, 999.9 values to NA (apply to wx.df only, not load.df!)
+wx.df3 <- recode.999s(wx.df2)
+
+## Check for NAs in the raw data... 
+## **how do we want to handle missing data?  Ommission, interpolation or infill?**
+check.nas(wx.df3)
+sum(! complete.cases(wx.df3))/dim(wx.df3)[1] # fraction of records that are incomplete
+
+## summarize by hour
+wx.df4 <- date.time(wx.df3)
+hourly.wx <- ddply(wx.df4, .(city, yr, m, d, hr), numcolwise(mean, na.rm=TRUE), .progress="text")
+
+## Check for NAs in the hourly summary
+str(hourly.wx)
+check.nas(hourly.wx)
+sum(! complete.cases(hourly.wx))/dim(hourly.wx)[1] # fraction of records that are incomplete
+
+## INSERT (OPTIONAL) FUNCTION TO INFILL MISSING WEATHER DATA ##
+## Adapt script from Joe Woo.... 2014-11-18.
+
+## write the clean data.frame to .csv
+write.csv(hourly.wx, file="compiled_hourly_weather.csv", row.names=FALSE)
+```
+
+
+```{r cooling degree days/hours}
+cdd <- sum(max( c( (df_days$Ti - df_days$T0), 0))) #cooling degree days
+cdh <- sum(max( c( (df_hours$Ti - df_hours$T0), 0))) #cooling degree hours
+
+#version control
+```
+
+
+Merge weather and load data.
+```{r merge}
+hourly.load <- read.csv("compiled_hourly_load.csv", header=TRUE)
+hourly.wx <- read.csv("compiled_hourly_weather.csv", header=TRUE)
+
+# how many cities do we have that are present in both datasets?
+sum(levels(hourly.load$city) %in% levels(hourly.wx$city))
+
+# merge
+hourly <- merge(hourly.wx, hourly.load, by=c("city", "yr", "m", "d", "hr"))
+hourly <- droplevels(hourly)
+
+# check for NAs
+check.nas(hourly)
+
+# check data summary
+summary(hourly)
+
+date <- as.Date(paste(as.character(hourly$m), 
+                      as.character(hourly$d),
+                      as.character(hourly$yr), 
+                      sep="-"),
+                format = "%m-%d-%Y",
+                tz = NULL)
+
+wday <- strftime(date, format="%w") # Weekday as decimal number (0–6, Sunday is 0).
+
+hourly$date <- date
+hourly$wday <- wday
+
+# saving a copy of hourly
+hourly1 <- hourly
+
+# subsetting by weekdays
+hourly <- hourly1[which(hourly1$wday==1 | hourly1$wday==2 | hourly1$wday==3 | hourly1$wday==4 | hourly1$wday==5 ),]
+```
+
+Plot time-slices of the data.  To adjust for diurnal variation in activity levels, we take a slice of the temperature-weather data at discrete hours. Otherwise, comparing energy use at 3pm vs. 3am will introduce diurnal effects of human activity (e.g. bustling at work vs. sleeping) independent of climate. Instead, we want to isolate the effect of climate. We also remove weekends **(NOTE: Henri, please add a simple function to remove weekends...)**
+```{r temp-load-plots}
+# subset 
+hourly <- subset(hourly, select=c("city", "yr", "m", "d", "hr", "temp", "mw", "lat"))
+hourly <- na.omit(hourly)
+midnight <- subset(hourly, hr=="0")
+sixAM <- subset(hourly, hr=="6")
+noon <- subset(hourly, hr=="12")
+sixPM <- subset(hourly, hr=="18")
+ToD<-list(midnight=midnight, sixAM=sixAM, noon=noon, sixPM=sixPM)
+
+for(i in 1:length(ToD)){
+  # plot temperature-load correlation, by city
+  print(
+    ggplot(ToD[[i]], aes(x=temp, y=mw, group=city)) + 
+          geom_point() + 
+          facet_wrap(~city, scales="free_y") +
+          labs(title=names(ToD[i]))
+    )
+  }
+```
+Interpretation of temp-load correlation:  
+
+The following table shows the effect of a 1 deg. C temperature increase (above the climate-indendent threshold of 20 deg. C) on electricity demand.(show table). The table shows both absolute and per-capita values.
+
+Fitting V shape segmented linear regression model
+```{r}
+# SEGMENTED ONLY MAKES SENSE FOR SUB-TROPICS, NOT TROPICS WHERE TEMPERATURE IS RARELY IF EVER IN HEATING REGIME
+# Fitting segmented linerar regression model
+library(segmented)
+# for(i in 1:length(ToD)){
+#   # plot temperature-load correlation, by city
+#   mods[[i]] <- dlply(ToD[[i]], .(city), lm, formula = mw ~ temp)
+#   names(mods)[[i]] <- names(ToD[i])
+#   print(names(ToD[i]))
+#   }
+
+# first object of 'mod' are the midnight model objects
+# second object of 'mod' are the sixAM model objects...
+
+## fit a linear model for each city in data.frame 'test', and assign the model object to a list 'mods'.
+## extract the model coefficients from the 'mods' list and assign to a new list called 'coefs'
+
+## JUST DO ONE AT A TIME (MIDNIGHT, 6AM, NOON, 6PM)
+# mods <- dlply(midnight, .(city), lm, formula = mw ~ temp)
+# coefs <- ldply(mods, coef)
+
+
+# # 1st try
+# segmentf_df <- function(df) {
+# linear <- lm(mw~temp, data=df)
+# segmented(linear, seg.Z=~temp, 
+# psi=(temp=NA),control=seg.control(stop.if.error=FALSE))#,it.max=Inf,n.boot=0))
+# }
+# test <- dlply(midnight,.(city), function(x) segmentf_df)
+# coefs1 <- ldply(test,coef)
+
+## 2nd try :(
+# for (i in 1:length(cities))
+#   {
+#   df <- midnight[which(midnight$city==cities[3]),]
+#   avg <- mean(df$temp)
+#   linear <- lm(mw~temp, data=df)
+#   seg <- segmented(linear, seg.Z=~temp, psi=list(temp=9),control=seg.control(display=FALSE))
+#   }
+
+## 3rd try
+## segmented models for cities with both regime and add the cities with cooling only
+cities <- levels(hourly$city)
+
+lattitudes <- ddply(hourly, .(city), summarize, lattitude=lat[1])
+colnames(lattitudes)[1] <- "cities"
+
+for (j in 1:length(ToD))
+  {
+prop <- data.frame(cities)
+prop$intercept <- 0
+prop$heating <- 0
+prop$cooling <- 0
+
+df <- as.data.frame(ToD[j])
+df <- df[,c(1,6,7)]
+colnames(df)[c(1,2,3)] <- c("city","min_T","mw")  #bizarely, the code wouldn't run for the name "temp"
+
+a <- NULL
+for (i in 1:length(cities))
+{a[i] <- mean(df$min_T[which(df$city==cities[i])])}
+
+for (i in 1:length(cities))
+{
+  track <- i
+  #if (i==13 | i==17 |i ==20 | i==23) next  
+  linear <- lm(mw ~ min_T,data=df[which(df$city==cities[i]),])
+  
+  minimum <- min(df$min_T[which(df[,1]==cities[[i]])])
+  if (minimum>19) {
+    prop$heating[which(prop$cities==cities[i])] <- 0 
+    prop$cooling[which(prop$cities==cities[i])] <- coef(linear)[2]
+    prop$intercept[which(prop$cities==cities[i])] <- coef(linear)[1]} else {
+    segm <- segmented(linear, seg.Z=~min_T, psi=list(min_T=a[i]), control=seg.control(display=FALSE))  
+    prop$intercept[i] <- coef(segm)[1]
+    prop$heating[i] <- coef(segm)[2]
+    prop$cooling[i] <- coef(segm)[3]
+    }
+}  
+prop <- merge(lattitudes, prop, by="cities")
+N <- names(ToD[j])
+assign(sprintf("grad.%s",N),prop)
+}
+```
+
+The midnight properties table look like: 
+```{r,echo=FALSE}
+grad.midnight
+```
+
+The 6AM properties table look like: 
+```{r, echo=FALSE}
+grad.sixAM
+```
+
+The Noon properties table look like: 
+```{r, echo=FALSE}
+grad.noon
+```
+
+
+The 6PM properties table look like: 
+```{r, echo=FALSE}
+grad.sixPM
+```
+
+Create Date and POSIXlt objects for accurate timekeeping and timeseries graphics.
+**Note: POSIX and Date objects are incompattible with ddply!**
+```{r}
+# this function converts character string timestamps to POSIXlt for proper handling of timeseries data.
+# then creates a Date object from the POSIX object, dropping the time component.
+# var name and timezone must be supplied in "quotes".
+date_time <- function(df, date_time_var, format=NULL, tz=NULL){
+  if (is.null(tz)) {
+    tz = "US/Eastern" # default timezone
+    }
+  if (is.null(format)) {
+    format = "%Y-%m-%d %H:%M:%S" # default expected timestamp format
+    } 
+  df[[date_time_var]] <- as.POSIXlt(as.character(df[[date_time_var]]),
+                                    tz = tz,
+                                    format = format
+                                    ) # convert character timestamp to POSIXlt
+  df[["date"]] <- as.Date(df[[date_time_var]]) # convert POSIX to Date to drop time components
+  return(df)
+  }
+
+# apply date_time function
+# var name and timezone must be in "quotes" !
+# delhi.load <- date_time(delhi.load, "date.time", tz="IST")
+# chandigarh.load <- date_time(chandigarh.load, "date.time", tz="IST")
+# singapore.load <- date_time(singapore.load, "date.time", tz="IST")
+```
+
