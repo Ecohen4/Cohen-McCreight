@@ -1,6 +1,6 @@
 ---
-title: "Downloading and processing NOAA weather station data in R"
-author: "Michael Piccirilli & Elliot Cohen"
+title: "Weather data pipeline for R"
+author: "By Elliot Cohen, Michael Piccirelli and James McCreight "
 date: "January 8, 2015"
 output:
   html_document:
@@ -10,11 +10,6 @@ output:
     toc_depth: 3
 theme: spacelab
 ---
-
-# Geo-referenced weather data pipeline 
-By Michael Piccirelli, Elliot Cohen and James McCreight  
-
-****
 
 ## Motivation
 Long observational records of high-resolution weather data are instrumental to a wide range of research and development applications. Such data are essential to energy demand forecasts (Segal et al. 1992; Sailor 2001; Crowley et al. 2003; Thatcher 2007, Cohen et al. 2014), building energy models (Deru et al. 2011), renewable energy feasibility and siting assessments (Lambert et al. 2005), crop insurance programs (Helmath et al. 2009), emergency preparedness and early warning systems (Rogers and Tsirkunov 2011), and much more.
